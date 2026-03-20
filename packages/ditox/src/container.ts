@@ -1,4 +1,4 @@
-import {Token, token} from './tokens';
+import { Token, token } from './tokens';
 
 /**
  * ResolverError is thrown by the resolver when a token is not found in a container.
@@ -20,8 +20,8 @@ export type FactoryScope = 'scoped' | 'singleton' | 'transient' | 'main';
  * Options for factory binding.
  *
  * `scope` types:
- *   - `singleton` - **This is the default**. The value is created and cached by the container which registered the factory.
- *   - `scoped` - The value is created and cached by the container which starts resolving.
+ *   - `singleton` - **This is the default**. The value is created and cached by the most distant parent container which owns the factory function.
+ *   - `scoped` - The value is created and cached by the nearest container which owns the factory function.
  *   - `transient` - The value is created every time it is resolved.
  *
  * `scoped` and `singleton` scopes can have `onRemoved` callback. It is called when a token is removed from the container.
@@ -64,7 +64,7 @@ export type Container = {
   get<T>(token: Token<T>): T | undefined;
 
   /**
-   * Returns a resolved value by the token, or throws `ResolverError` in case the token is not found.
+   * Returns a resolved value by the token or throws `ResolverError` in case the token is not found.
    */
   resolve<T>(token: Token<T>): T;
 
@@ -79,10 +79,16 @@ export type Container = {
   removeAll(): void;
 };
 
+/**
+ * A subset of Container interface that provides read-only access to dependency resolution.
+ * This type is used for parent containers to allow token resolution without exposing mutation methods.
+ */
+export type ContainerResolver = Pick<Container, 'hasToken' | 'get' | 'resolve'>;
+
 /** @internal */
 export const CONTAINER: Token<Container> = token('ditox.Container');
 /** @internal */
-export const PARENT_CONTAINER: Token<Container> = token(
+export const PARENT_CONTAINERS: Token<ReadonlyArray<Container>> = token(
   'ditox.ParentContainer',
 );
 /** @internal */
@@ -90,11 +96,6 @@ export const RESOLVER: Token<Resolver> = token('ditox.Resolver');
 
 /** @internal */
 const NOT_FOUND = Symbol();
-
-/** @internal */
-export const FAKE_FACTORY = (): never => {
-  throw new Error('FAKE_FACTORY');
-};
 
 /** @internal */
 const DEFAULT_SCOPE: FactoryScope = 'singleton';
@@ -136,7 +137,7 @@ function getOnRemoved<T>(options: FactoryOptions<T>) {
 function isInternalToken<T>(token: Token<T>): boolean {
   return (
     token.symbol === CONTAINER.symbol ||
-    token.symbol === PARENT_CONTAINER.symbol ||
+    token.symbol === PARENT_CONTAINERS.symbol ||
     token.symbol === RESOLVER.symbol
   );
 }
@@ -146,9 +147,17 @@ function isInternalToken<T>(token: Token<T>): boolean {
  *
  * Container can have an optional parent to chain token resolution. The parent is used in case the current container does not have a registered token.
  *
- * @param parentContainer - Optional parent container.
+ * @param parentArg - Optional parent container or an array of containers.
  */
-export function createContainer(parentContainer?: Container): Container {
+export function createContainer(
+  parentArg?: ContainerResolver | ReadonlyArray<ContainerResolver>,
+): Container {
+  const parents: ReadonlyArray<ContainerResolver> | undefined = parentArg
+    ? Array.isArray(parentArg)
+      ? [...parentArg]
+      : [parentArg]
+    : undefined;
+
   const values: ValuesMap = new Map<symbol, any>();
   const factories: FactoriesMap = new Map<symbol, FactoryContext<any>>();
 
@@ -170,7 +179,7 @@ export function createContainer(parentContainer?: Container): Container {
         return;
       }
 
-      factories.set(token.symbol, {factory, options});
+      factories.set(token.symbol, { factory, options });
     },
 
     remove<T>(token: Token<T>): void {
@@ -203,7 +212,7 @@ export function createContainer(parentContainer?: Container): Container {
       return (
         values.has(token.symbol) ||
         factories.has(token.symbol) ||
-        (parentContainer?.hasToken(token) ?? false)
+        parentContainersHaveToken(parents, token)
       );
     },
 
@@ -248,14 +257,14 @@ export function createContainer(parentContainer?: Container): Container {
     }
 
     const factoryContext = factories.get(token.symbol);
-    if (factoryContext && factoryContext.factory !== FAKE_FACTORY) {
+    if (factoryContext) {
       const scope = getScope(factoryContext.options);
 
       switch (scope) {
         case 'singleton': {
           if (hasValue) {
             return value;
-          } else if (parentContainer?.hasToken(token)) {
+          } else if (parentContainersHaveToken(parents, token)) {
             break;
           } else {
             // Cache the value in the same container where the factory is registered.
@@ -266,16 +275,14 @@ export function createContainer(parentContainer?: Container): Container {
         }
 
         case 'scoped': {
-          // Create a value within the origin container and cache it.
-          const value = factoryContext.factory(origin);
-          origin.bindValue(token, value);
-
-          if (origin !== container) {
-            // Bind a fake factory with actual options to make onRemoved() works.
-            origin.bindFactory(token, FAKE_FACTORY, factoryContext.options);
+          if (hasValue) {
+            return value;
+          } else {
+            // Create a value within the factory's container and cache it.
+            const value = factoryContext.factory(container);
+            container.bindValue(token, value);
+            return value;
           }
-
-          return value;
         }
 
         case 'main': {
@@ -300,9 +307,8 @@ export function createContainer(parentContainer?: Container): Container {
       return value;
     }
 
-    const parentResolver = parentContainer?.get(RESOLVER);
-    if (parentResolver) {
-      return parentResolver(token, origin);
+    if (parents) {
+      return parentContainersResolveToken(parents, token, origin);
     }
 
     return NOT_FOUND;
@@ -326,11 +332,44 @@ export function createContainer(parentContainer?: Container): Container {
     values.set(RESOLVER.symbol, resolver);
     values.set(FACTORIES_MAP.symbol, factories);
 
-    if (parentContainer) {
-      values.set(PARENT_CONTAINER.symbol, parentContainer);
+    if (parents) {
+      values.set(PARENT_CONTAINERS.symbol, parents);
     }
   }
 
   bindInternalTokens();
   return container;
+}
+
+function parentContainersHaveToken<T>(
+  parents: ReadonlyArray<ContainerResolver> | undefined,
+  token: Token<T>,
+): boolean {
+  if (!parents) return false;
+
+  for (let i = 0; i < parents.length; i++) {
+    if (parents[i].hasToken(token)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function parentContainersResolveToken<T>(
+  parents: ReadonlyArray<ContainerResolver>,
+  token: Token<T>,
+  origin: Container,
+): T | typeof NOT_FOUND {
+  for (const parentContainer of parents) {
+    const parentResolver = parentContainer.get(RESOLVER);
+    if (parentResolver) {
+      const resolved = parentResolver(token, origin);
+      if (resolved !== NOT_FOUND) {
+        return resolved;
+      }
+    }
+  }
+
+  return NOT_FOUND;
 }

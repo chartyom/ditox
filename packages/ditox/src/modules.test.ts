@@ -1,18 +1,20 @@
-import {createContainer} from './container';
+import { describe, expect, it, vi } from 'vitest';
+import { createContainer } from './container';
 import {
   bindModule,
   bindModules,
   declareModule,
   declareModuleBindings,
   Module,
+  ModuleBindingEntry,
   ModuleDeclaration,
 } from './modules';
-import {injectable} from './utils';
-import {token} from './tokens';
+import { token } from './tokens';
+import { injectable } from './utils';
 
 describe('bindModule()', () => {
-  type TestQueries = {getValue: () => number};
-  type TestModule = Module<{queries: TestQueries}>;
+  type TestQueries = { getValue: () => number };
+  type TestModule = Module<{ queries: TestQueries }>;
 
   const MODULE_TOKEN = token<TestModule>();
   const QUERIES_TOKEN = token<TestQueries>();
@@ -39,7 +41,7 @@ describe('bindModule()', () => {
   });
 
   it('should destroy the module on removing the module token and remove tokens of its exported props', () => {
-    const destroy = jest.fn();
+    const destroy = vi.fn();
     const container = createContainer();
 
     bindModule(container, {
@@ -65,10 +67,10 @@ describe('bindModule()', () => {
     const token1 = token();
     const token2 = token();
 
-    const beforeBinding = jest.fn((container) =>
+    const beforeBinding = vi.fn((container) =>
       container.bindValue(token1, 'foo'),
     );
-    const afterBinding = jest.fn((container) => {
+    const afterBinding = vi.fn((container) => {
       const value = container.resolve(QUERIES_TOKEN).getValue();
       container.bindValue(token2, value * 10);
     });
@@ -86,6 +88,139 @@ describe('bindModule()', () => {
     expect(container.resolve(token2)).toBe(10);
   });
 
+  it('should support "eager" strategy', () => {
+    const container = createContainer();
+    const factory = vi.fn(() => ({}));
+
+    const MODULE = declareModule({
+      factory,
+      strategy: 'eager',
+    });
+
+    bindModule(container, MODULE);
+    expect(factory).toBeCalledTimes(1);
+  });
+
+  it('should support "lazy" strategy by default', () => {
+    const container = createContainer();
+    const factory = vi.fn(() => ({}));
+
+    const MODULE = declareModule({
+      factory,
+    });
+
+    bindModule(container, MODULE);
+    expect(factory).toBeCalledTimes(0);
+
+    container.resolve(MODULE.token);
+    expect(factory).toBeCalledTimes(1);
+  });
+
+  it('should support "eager" strategy in imports', () => {
+    const container = createContainer();
+    const factory1 = vi.fn(() => ({}));
+    const factory2 = vi.fn(() => ({}));
+
+    const MODULE1 = declareModule({
+      factory: factory1,
+      strategy: 'eager',
+    });
+
+    const MODULE2 = declareModule({
+      factory: factory2,
+      imports: [MODULE1],
+    });
+
+    bindModule(container, MODULE2);
+    expect(factory1).toBeCalledTimes(1);
+    expect(factory2).toBeCalledTimes(0);
+  });
+
+  it('should throw an error during binding if "eager" factory fails', () => {
+    const container = createContainer();
+    const error = new Error('Eager factory failed');
+    const factory = vi.fn(() => {
+      throw error;
+    });
+
+    const MODULE = declareModule({
+      factory,
+      strategy: 'eager',
+    });
+
+    expect(() => bindModule(container, MODULE)).toThrow(error);
+  });
+
+  it('should throw an error during binding if imported "eager" factory fails', () => {
+    const container = createContainer();
+    const error = new Error('Eager factory failed');
+    const factory1 = vi.fn(() => {
+      throw error;
+    });
+
+    const MODULE1 = declareModule({
+      factory: factory1,
+      strategy: 'eager',
+    });
+
+    const MODULE2 = declareModule({
+      factory: () => ({}),
+      imports: [MODULE1],
+    });
+
+    expect(() => bindModule(container, MODULE2)).toThrow(error);
+  });
+
+  it('should execute "eager" factories in reverse BFS order', () => {
+    const route: string[] = [];
+
+    const declareEagerModule = (id: string, imports?: ModuleBindingEntry[]) =>
+      declareModule({
+        imports,
+        strategy: 'eager',
+        factory: () => {
+          route.push(id);
+          return {};
+        },
+      });
+
+    /**
+     * Structure:
+     *       m1
+     *     / | \
+     *   m2 m3 m4
+     *
+     * BFS order: m1, m2, m3, m4
+     * Expected execution order (reverse): m4, m3, m2, m1
+     */
+    const m4 = declareEagerModule('m4');
+    const m3 = declareEagerModule('m3');
+    const m2 = declareEagerModule('m2');
+    const m1 = declareEagerModule('m1', [m2, m3, m4]);
+
+    const container = createContainer();
+    bindModule(container, m1);
+
+    expect(route).toEqual(['m4', 'm3', 'm2', 'm1']);
+  });
+
+  it('should throw an error during resolution if "lazy" factory fails', () => {
+    const container = createContainer();
+    const error = new Error('Lazy factory failed');
+    const factory = vi.fn(() => {
+      throw error;
+    });
+
+    const MODULE = declareModule({
+      factory,
+    });
+
+    bindModule(container, MODULE);
+    expect(factory).toBeCalledTimes(0);
+
+    expect(() => container.resolve(MODULE.token)).toThrow(error);
+  });
+
   it('should bind the module as singleton by default', () => {
     const parent = createContainer();
     const container = createContainer(parent);
@@ -98,7 +233,7 @@ describe('bindModule()', () => {
     const parent = createContainer();
     const container = createContainer(parent);
 
-    bindModule(parent, MODULE, {scope: 'singleton'});
+    bindModule(parent, MODULE, { scope: 'singleton' });
     expect(parent.get(MODULE_TOKEN)).toBe(container.get(MODULE_TOKEN));
   });
 
@@ -106,19 +241,19 @@ describe('bindModule()', () => {
     const parent = createContainer();
     const container = createContainer(parent);
 
-    bindModule(parent, MODULE, {scope: 'scoped'});
-    expect(parent.get(MODULE_TOKEN)).not.toBe(container.get(MODULE_TOKEN));
-    expect(parent.get(QUERIES_TOKEN)).not.toBe(container.get(QUERIES_TOKEN));
+    bindModule(parent, MODULE, { scope: 'scoped' });
+    expect(parent.get(MODULE_TOKEN)).toBe(container.get(MODULE_TOKEN));
+    expect(parent.get(QUERIES_TOKEN)).toBe(container.get(QUERIES_TOKEN));
   });
 
   it('should remove "singleton" module when a container is cleaning', () => {
     const parent = createContainer();
     const container = createContainer(parent);
 
-    const destroy = jest.fn();
+    const destroy = vi.fn();
     bindModule(parent, {
       token: MODULE_TOKEN,
-      factory: (container) => ({...MODULE.factory(container), destroy}),
+      factory: (container) => ({ ...MODULE.factory(container), destroy }),
     });
 
     parent.resolve(MODULE_TOKEN);
@@ -134,12 +269,12 @@ describe('bindModule()', () => {
     const parent = createContainer();
     const container = createContainer(parent);
 
-    const destroy = jest.fn();
+    const destroy = vi.fn();
     bindModule(
       parent,
       {
         token: MODULE_TOKEN,
-        factory: (container) => ({...MODULE.factory(container), destroy}),
+        factory: (container) => ({ ...MODULE.factory(container), destroy }),
       },
       {
         scope: 'scoped',
@@ -149,32 +284,33 @@ describe('bindModule()', () => {
     parent.resolve(MODULE_TOKEN);
     container.resolve(MODULE_TOKEN);
 
-    parent.removeAll();
-    expect(destroy).toBeCalledTimes(1);
-
     destroy.mockClear();
     container.removeAll();
+    expect(destroy).toBeCalledTimes(0);
+
+    destroy.mockClear();
+    parent.removeAll();
     expect(destroy).toBeCalledTimes(1);
   });
 
   it('should bind modules and binding entries from "imports" to the container', () => {
-    type TestModule = Module<{value: number}>;
+    type TestModule = Module<{ value: number }>;
 
     const MODULE1_TOKEN = token<TestModule>();
     const MODULE1: ModuleDeclaration<TestModule> = {
       token: MODULE1_TOKEN,
-      factory: () => ({value: 1}),
+      factory: () => ({ value: 1 }),
     };
 
     const MODULE2_TOKEN = token<TestModule>();
     const MODULE2: ModuleDeclaration<TestModule> = {
       token: MODULE2_TOKEN,
-      factory: () => ({value: 2}),
+      factory: () => ({ value: 2 }),
     };
 
     const MODULE2_ALTERED: ModuleDeclaration<TestModule> = {
       token: MODULE2_TOKEN,
-      factory: () => ({value: 22}),
+      factory: () => ({ value: 22 }),
     };
 
     const parent = createContainer();
@@ -187,7 +323,7 @@ describe('bindModule()', () => {
         factory: () => ({}),
         imports: [
           MODULE1,
-          {module: MODULE2_ALTERED, options: {scope: 'scoped'}},
+          { module: MODULE2_ALTERED, options: { scope: 'scoped' } },
         ],
       }),
     );
@@ -203,13 +339,13 @@ describe('bindModule()', () => {
     const ARG_TOKEN = token<string>('arg');
     const RESULT_TOKEN = token<string>('result');
 
-    type TestModule = Module<{value: string}>;
+    type TestModule = Module<{ value: string }>;
 
     const MODULE1: ModuleDeclaration<TestModule> = declareModule({
       beforeBinding: (container) =>
         container.bindValue(ARG_TOKEN, container.resolve(ARG_TOKEN) + '2'),
-      factory: injectable((arg) => ({value: arg + '3'}), ARG_TOKEN),
-      exports: {value: RESULT_TOKEN},
+      factory: injectable((arg) => ({ value: arg + '3' }), ARG_TOKEN),
+      exports: { value: RESULT_TOKEN },
     });
 
     const container = createContainer();
@@ -227,26 +363,88 @@ describe('bindModule()', () => {
     expect(container.resolve(ARG_TOKEN)).toBe('12');
     expect(container.resolve(RESULT_TOKEN)).toBe('123');
   });
+
+  it('should call beforeBinding() and afterBinding() in deep-first order', () => {
+    const route: string[] = [];
+
+    const declareTestModule = (
+      id: string,
+      imports?: ModuleDeclaration<Record<string, any>>[],
+    ) =>
+      declareModule({
+        imports,
+        beforeBinding: () => route.push(`${id}:before`),
+        factory: (container) => {
+          imports?.forEach((m) => container.resolve(m.token));
+          route.push(`${id}:factory`);
+          return {};
+        },
+        afterBinding: () => route.push(`${id}:after`),
+      });
+
+    /**
+     *       m1
+     *     / | \
+     *   m2 m3 m4
+     *  / \  \ |
+     * m5 m6  m7
+     */
+    const m7 = declareTestModule('m7');
+    const m6 = declareTestModule('m6');
+    const m5 = declareTestModule('m5');
+    const m4 = declareTestModule('m4', [m7]);
+    const m3 = declareTestModule('m3', [m7]);
+    const m2 = declareTestModule('m2', [m5, m6]);
+    const m1 = declareTestModule('m1', [m2, m3, m4]);
+
+    const container = createContainer();
+    bindModule(container, m1);
+    container.resolve(m1.token);
+
+    expect(route).toEqual([
+      'm1:before',
+      'm2:before',
+      'm3:before',
+      'm4:before',
+      'm5:before',
+      'm6:before',
+      'm7:before',
+      'm7:after',
+      'm6:after',
+      'm5:after',
+      'm4:after',
+      'm3:after',
+      'm2:after',
+      'm1:after',
+      'm5:factory',
+      'm6:factory',
+      'm2:factory',
+      'm7:factory',
+      'm3:factory',
+      'm4:factory',
+      'm1:factory',
+    ]);
+  });
 });
 
 describe('bindModules()', () => {
-  type TestModule = Module<{value: number}>;
+  type TestModule = Module<{ value: number }>;
 
   const MODULE1_TOKEN = token<TestModule>();
   const MODULE1: ModuleDeclaration<TestModule> = {
     token: MODULE1_TOKEN,
-    factory: () => ({value: 1}),
+    factory: () => ({ value: 1 }),
   };
 
   const MODULE2_TOKEN = token<TestModule>();
   const MODULE2: ModuleDeclaration<TestModule> = {
     token: MODULE2_TOKEN,
-    factory: () => ({value: 2}),
+    factory: () => ({ value: 2 }),
   };
 
   const MODULE2_ALTERED: ModuleDeclaration<TestModule> = {
     token: MODULE2_TOKEN,
-    factory: () => ({value: 22}),
+    factory: () => ({ value: 22 }),
   };
 
   it('should bind modules and binding entries to the container', () => {
@@ -257,7 +455,7 @@ describe('bindModules()', () => {
 
     bindModules(container, [
       MODULE1,
-      {module: MODULE2_ALTERED, options: {scope: 'scoped'}},
+      { module: MODULE2_ALTERED, options: { scope: 'scoped' } },
     ]);
 
     expect(parent.get(MODULE1_TOKEN)).toBeUndefined();
@@ -273,16 +471,16 @@ describe('declareModule()', () => {
     const container = createContainer();
 
     const VALUE_TOKEN = token<number>();
-    const MODULE_TOKEN = token<Module<{value: number}>>();
+    const MODULE_TOKEN = token<Module<{ value: number }>>();
     const MODULE = declareModule({
       token: MODULE_TOKEN,
-      factory: () => ({value: 1}),
-      exports: {value: VALUE_TOKEN},
+      factory: () => ({ value: 1 }),
+      exports: { value: VALUE_TOKEN },
     });
 
     bindModule(container, MODULE);
     expect(container.get(VALUE_TOKEN)).toBe(1);
-    expect(container.get(MODULE_TOKEN)).toEqual({value: 1});
+    expect(container.get(MODULE_TOKEN)).toEqual({ value: 1 });
   });
 
   it('should declare a binding for the anonymous module', () => {
@@ -290,8 +488,8 @@ describe('declareModule()', () => {
 
     const VALUE_TOKEN = token<number>();
     const MODULE = declareModule({
-      factory: () => ({value: 1}),
-      exports: {value: VALUE_TOKEN},
+      factory: () => ({ value: 1 }),
+      exports: { value: VALUE_TOKEN },
     });
 
     bindModule(container, MODULE);
@@ -305,14 +503,14 @@ describe('declareModuleBindings()', () => {
 
     const VALUE1_TOKEN = token<number>();
     const MODULE1 = declareModule({
-      factory: () => ({value: 1}),
-      exports: {value: VALUE1_TOKEN},
+      factory: () => ({ value: 1 }),
+      exports: { value: VALUE1_TOKEN },
     });
 
     const VALUE2_TOKEN = token<number>();
     const MODULE2 = declareModule({
-      factory: () => ({value: 2}),
-      exports: {value: VALUE2_TOKEN},
+      factory: () => ({ value: 2 }),
+      exports: { value: VALUE2_TOKEN },
     });
 
     const MODULE_BINDINGS = declareModuleBindings([MODULE1, MODULE2]);
@@ -322,5 +520,23 @@ describe('declareModuleBindings()', () => {
     expect(container.get(VALUE2_TOKEN)).toBe(2);
 
     expect(container.get(MODULE_BINDINGS.token)).toEqual({});
+  });
+
+  it('should ignore falsy tokens in exports', () => {
+    const container = createContainer();
+
+    const MODULE = declareModule({
+      factory: () => ({
+        valid: 1,
+        invalid: 2,
+      }),
+      exports: {
+        valid: token(),
+        invalid: undefined,
+      } as any,
+    });
+
+    bindModule(container, MODULE);
+    expect(container.get(MODULE.token)).toEqual({ valid: 1, invalid: 2 });
   });
 });

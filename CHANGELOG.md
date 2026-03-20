@@ -1,5 +1,99 @@
 # Change Log
 
+All notable changes to this project will be documented in this file.
+See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
+
+# [3.3.0](https://github.com/mnasyrov/ditox/compare/v3.2.0...v3.3.0) (2026-02-23)
+
+
+### Features
+
+* Add support for "eager" module binding strategy and related test cases ([09354ea](https://github.com/mnasyrov/ditox/commit/09354ea00d6a7a5e618d175b50af191ca295737b))
+
+
+
+
+
+# Change Log
+
+All notable changes to this project will be documented in this file. See
+[Conventional Commits](https://conventionalcommits.org) for commit guidelines.
+
+# [3.2.0](https://github.com/mnasyrov/ditox/compare/v3.1.0...v3.2.0) (2026-02-22)
+
+### Features
+
+- Introduce `ContainerResolver` type for read-only dependency resolution in
+  parent containers
+  ([cf83a68](https://github.com/mnasyrov/ditox/commit/cf83a686855e65387388b79e0c1581414b31a192))
+
+# Change Log
+
+All notable changes to this project will be documented in this file. See
+[Conventional Commits](https://conventionalcommits.org) for commit guidelines.
+
+# [3.1.0](https://github.com/mnasyrov/ditox/compare/v3.0.1...v3.1.0) (2025-08-22)
+
+### Features
+
+- Support multiple parent containers in container creation and token resolution
+  ([5bf07ea](https://github.com/mnasyrov/ditox/commit/5bf07ea8dd2ffe1a4872e8f00d4f2c6e9170368e))
+
+# Change Log
+
+All notable changes to this project will be documented in this file. See
+[Conventional Commits](https://conventionalcommits.org) for commit guidelines.
+
+## [3.0.1](https://github.com/mnasyrov/ditox/compare/v3.0.0...v3.0.1) (2025-03-02)
+
+**Note:** Version bump only for package ditox-root
+
+# Change Log
+
+All notable changes to this project will be documented in this file. See
+[Conventional Commits](https://conventionalcommits.org) for commit guidelines.
+
+# [3.0.0](https://github.com/mnasyrov/ditox/compare/v2.4.1...v3.0.0) (2024-07-12)
+
+### Bug Fixes
+
+- Changed resolution of "scoped" bindings to keep a created value in the
+  container which owns the factory
+  ([#40](https://github.com/mnasyrov/ditox/issues/40))
+  ([736ef2f](https://github.com/mnasyrov/ditox/commit/736ef2f927d43c91f027c68e230371cce3f50131))
+- Fixed binding modules
+  ([997ca44](https://github.com/mnasyrov/ditox/commit/997ca44b09446a6e4d524ba9c16ce0c9cd7995d8))
+
+# Change Log
+
+All notable changes to this project will be documented in this file. See
+[Conventional Commits](https://conventionalcommits.org) for commit guidelines.
+
+# [3.0.0-dev.2](https://github.com/mnasyrov/ditox/compare/v3.0.0-dev.1...v3.0.0-dev.2) (2024-07-11)
+
+### Bug Fixes
+
+- Fixed binding modules
+  ([997ca44](https://github.com/mnasyrov/ditox/commit/997ca44b09446a6e4d524ba9c16ce0c9cd7995d8))
+- New factory binding doesn't reset a cached value
+  ([7a33dc6](https://github.com/mnasyrov/ditox/commit/7a33dc63d5b95588c5ed5e7ad4e1e748230bcc2e))
+
+# Change Log
+
+All notable changes to this project will be documented in this file. See
+[Conventional Commits](https://conventionalcommits.org) for commit guidelines.
+
+# [3.0.0-dev.1](https://github.com/mnasyrov/ditox/compare/v2.4.1...v3.0.0-dev.1) (2024-05-31)
+
+### Bug Fixes
+
+- Changed resolution of "scoped" bindings to keep a created value in the
+  container which owns the factory
+  ([#40](https://github.com/mnasyrov/ditox/issues/40))
+  ([736ef2f](https://github.com/mnasyrov/ditox/commit/736ef2f927d43c91f027c68e230371cce3f50131))
+
+# Change Log
+
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
@@ -271,7 +365,7 @@ for commit guidelines.
 
 ### Bug Fixes
 
-- "onUnbind" is available for "singlenton" scope only. Added tests.
+- "onUnbind" is available for "singleton" scope only. Added tests.
   ([0953379](https://github.com/mnasyrov/ditox/commit/0953379aaefd25763ecfdb903761d1e1b5fd8e01))
 
 ### Features

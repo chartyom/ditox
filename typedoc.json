@@ -2,8 +2,13 @@
   "$schema": "https://typedoc.org/schema.json",
 
   "entryPointStrategy": "packages",
-  "entryPoints": ["packages/ditox", "packages/ditox-react"],
-  "exclude": ["**/*.test.ts"],
+  "entryPoints": [
+    "packages/ditox",
+    "packages/ditox-react"
+  ],
+  "exclude": [
+    "**/*.test.ts"
+  ],
   "out": "build/docs",
 
   "name": "Ditox.js",
@@ -12,16 +17,6 @@
   "navigationLinks": {
     "GitHub": "https://github.com/mnasyrov/ditox"
   },
-  "media": "media",
 
-  "customDescription": "Dependency injection for modular web applications",
-  "favicon": "media/lemon.svg",
-  "replaceText": {
-    "replacements": [
-      {
-        "pattern": "src=\"../../media/",
-        "replace": "src=\"/media/"
-      }
-    ]
-  }
+  "favicon": "media/lemon.svg"
 }

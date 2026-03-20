@@ -2,24 +2,24 @@
 
 <img alt="lemon" src="media/lemon.svg" width="120" />
 
-**Dependency injection for modular web applications**
+**Dependency injection for web applications**
 
 [![npm](https://img.shields.io/npm/v/ditox)](https://www.npmjs.com/package/ditox)
 [![stars](https://img.shields.io/github/stars/mnasyrov/ditox)](https://github.com/mnasyrov/ditox/stargazers)
 [![types](https://img.shields.io/npm/types/ditox)](https://www.npmjs.com/package/ditox)
-[![licence](https://img.shields.io/github/license/mnasyrov/ditox)](https://github.com/mnasyrov/ditox/blob/master/LICENSE)
+[![license](https://img.shields.io/github/license/mnasyrov/ditox)](https://github.com/mnasyrov/ditox/blob/master/LICENSE)
 [![coverage](https://coveralls.io/repos/github/mnasyrov/ditox/badge)](https://coveralls.io/github/mnasyrov/ditox)
 
 ## Overview
 
 Ditox.js is a lightweight dependency injection container for TypeScript. It
 provides a simple functional API to bind values and factories to container by
-tokens, and resolve values later. The library supports different scopes for
+tokens and resolve values later. The library supports different scopes for
 factory bindings, including "singleton", "scoped", and "transient". Bindings can
-be organised as a dependency module in declarative way.
+be organized as a dependency module declaratively.
 
-Ditox.js works with containers, tokens, values and value factories. There are no
-class decorators, field injectors and other magic. Explicit binding and
+Ditox.js works with containers, tokens, values, and value factories. There are no
+class decorators, field injectors, and other magic. Explicit binding and
 resolving are used.
 
 ## Features
@@ -29,7 +29,7 @@ resolving are used.
 - Scopes for factory bindings
 - Dependency modules
 - Multi-value tokens
-- Typescript typings
+- TypeScript types
 
 ## API References
 
@@ -57,20 +57,13 @@ Packages can be used as [UMD](https://github.com/umdjs/umd) modules. Use
 [ditox-react](https://www.jsdelivr.com/package/npm/ditox-react):
 
 ```html
-<script src="//cdn.jsdelivr.net/npm/ditox@2.3.0/dist/umd/index.js" />
-<script src="//cdn.jsdelivr.net/npm/ditox-react@2.3.0/dist/umd/index.js" />
+
+<script src="//cdn.jsdelivr.net/npm/ditox/dist/umd/index.js"></script>
+<script src="//cdn.jsdelivr.net/npm/ditox-react/dist/umd/index.js"></script>
 <script>
   const container = Ditox.createContainer();
   // DitoxReact.useDependency(SOME_TOKEN);
 </script>
-```
-
-`ditox` package is available for Deno environment:
-
-```typescript
-import {createContainer} from 'https://deno.land/x/ditox/mod.ts';
-
-const container = createContainer();
 ```
 
 ### Basic concepts
@@ -107,7 +100,7 @@ Create an injection token for a logger and DI container. Bind a logger
 implementation and resolve its value later in the application:
 
 ```typescript
-import {createContainer, token} from 'ditox';
+import { createContainer, token } from 'ditox';
 
 type LoggerService = {
   log: (...messages: string[]) => void;
@@ -136,7 +129,7 @@ logger.log('Hello World!');
 Bind a factory of a remote logger which depends on an HTTP client:
 
 ```typescript
-import {injectable} from 'ditox';
+import { injectable } from 'ditox';
 
 export type ServerClient = {
   log: (...messages: string[]) => void;
@@ -163,20 +156,14 @@ logger.log('Hello World!');
 
 ### DI module
 
-Organise related bindings and functional as a DI module:
+Organize related bindings and functionality as a DI module:
 
 ```typescript
-import {bindModule, declareModule} from 'ditox';
+import { bindModule, declareModule } from 'ditox';
 
 type SendMetricFn = (key: string, value: string) => void;
 
 const SEND_METRIC_TOKEN = token<SendMetricFn>();
-
-function createMetricClient(client: ServerClient): Logger {
-  return {
-    sendMetric: (key: string, value: string) => client.sendMetric(key, value),
-  };
-}
 
 // Declare a DI module
 const TELEMETRY_MODULE = declareModule<LoggerModule>({
@@ -184,11 +171,11 @@ const TELEMETRY_MODULE = declareModule<LoggerModule>({
     const logger = createLoggerClient(client);
 
     const sendMetric = (key: string, value: string) => {
-      logger('metric', key, value);
+      logger.log('metric', key, value);
       client.sendMetric(key, value);
     };
 
-    return {logger, sendMetric};
+    return { logger, sendMetric };
   }, SERVER_CLIENT_TOKEN),
   exports: {
     logger: LOGGER_TOKEN,
@@ -216,8 +203,8 @@ Wrap a component tree by a DI container and bind modules:
 
 import ReactDOM from 'react-dom';
 
-import {Greeting} from './Greeting';
-import {TELEMETRY_MODULE} from './telemetry';
+import { Greeting } from './Greeting';
+import { TELEMETRY_MODULE } from './telemetry';
 
 const APP_MODULE = declareModule({
   imports: [TELEMETRY_MODULE],
@@ -241,7 +228,7 @@ Injecting a dependency by a React component:
 ```tsx
 // Greeting.tsx
 
-import {useDependency} from 'ditox-react';
+import { useDependency } from 'ditox-react';
 
 export const Greeting: FC = () => {
   const logger = useDependency(LOGGER_TOKEN);
@@ -260,7 +247,7 @@ export const Greeting: FC = () => {
   announcements
 - Create a 💬 [GitHub issue](https://github.com/mnasyrov/ditox/issues) for bug
   reports, feature requests, or questions
-- Add a ⭐️ star on [GitHub](https://github.com/mnasyrov/ditox/issues) and 🐦
+- Add a ⭐️ star on [GitHub](https://github.com/mnasyrov/ditox) and 🐦
   [tweet](https://twitter.com/intent/tweet?url=https%3A%2F%2Fgithub.com%2Fmnasyrov%2Fditox&hashtags=developers,frontend,javascript)
   to promote the project
 

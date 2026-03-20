@@ -1,13 +1,13 @@
+import { describe, expect, it, test, vi } from 'vitest';
 import {
   CONTAINER,
   createContainer,
-  FACTORIES_MAP,
-  FAKE_FACTORY,
-  PARENT_CONTAINER,
+  PARENT_CONTAINERS,
+  RESOLVER,
   ResolverError,
 } from './container';
-import {injectable} from './utils';
-import {optional, token} from './tokens';
+import { optional, token } from './tokens';
+import { injectable } from './utils';
 
 const NUMBER = token<number>('number');
 const STRING = token<string>('string');
@@ -30,7 +30,7 @@ describe('Container', () => {
     it('should bind a result of a factory and prevent invoking it', () => {
       const container = createContainer();
 
-      const factory = jest.fn(() => 1);
+      const factory = vi.fn(() => 1);
       container.bindFactory(NUMBER, factory);
       container.bindValue(NUMBER, 2);
 
@@ -44,10 +44,10 @@ describe('Container', () => {
 
       const custom = createContainer();
       container.bindValue(CONTAINER, custom);
-      container.bindValue(PARENT_CONTAINER, custom);
+      container.bindValue(PARENT_CONTAINERS, [custom]);
 
       expect(container.get(CONTAINER)).toBe(container);
-      expect(container.get(PARENT_CONTAINER)).toBe(parent);
+      expect(container.get(PARENT_CONTAINERS)).toEqual([parent]);
     });
   });
 
@@ -56,7 +56,7 @@ describe('Container', () => {
       const container = createContainer();
 
       let containerArg;
-      const factory = jest.fn((arg) => {
+      const factory = vi.fn((arg) => {
         containerArg = arg;
         return 1;
       });
@@ -70,8 +70,8 @@ describe('Container', () => {
     it('should rebind a factory in case it was bound', () => {
       const container = createContainer();
 
-      const factory1 = jest.fn(() => 1);
-      const factory2 = jest.fn(() => 2);
+      const factory1 = vi.fn(() => 1);
+      const factory2 = vi.fn(() => 2);
       container.bindFactory(NUMBER, factory1);
       container.bindFactory(NUMBER, factory2);
 
@@ -89,7 +89,7 @@ describe('Container', () => {
       container.bindValue(START, 20);
 
       let counter = 0;
-      const factory = jest.fn((start) => start + ++counter);
+      const factory = vi.fn((start) => start + ++counter);
       parent.bindFactory(NUMBER, injectable(factory, START), {
         scope: 'singleton',
       });
@@ -141,29 +141,45 @@ describe('Container', () => {
       container.bindValue(START, 20);
 
       let counter = 0;
-      const factory = jest.fn((start) => start + ++counter);
+      const factory = vi.fn((start) => start + ++counter);
       parent.bindFactory(NUMBER, injectable(factory, START), {
         scope: 'scoped',
       });
 
-      expect(container.get(NUMBER)).toBe(21);
-      expect(container.get(NUMBER)).toBe(21);
-      expect(parent.get(NUMBER)).toBe(12);
-      expect(container.get(NUMBER)).toBe(21);
+      expect(container.get(NUMBER)).toBe(11);
+      expect(container.get(NUMBER)).toBe(11);
+      expect(parent.get(NUMBER)).toBe(11);
+      expect(container.get(NUMBER)).toBe(11);
+
+      expect(factory).toBeCalledTimes(1);
+    });
+
+    it('should inherit a factory with "scoped" scope', async () => {
+      const parentParent = createContainer();
+      let counter = 0;
+      const factory = vi.fn(() => ++counter);
+
+      parentParent.bindFactory(NUMBER, factory);
+
+      expect(parentParent.get(NUMBER)).toBe(1);
+
+      const parent = createContainer(parentParent);
+
+      parent.bindFactory(NUMBER, injectable(factory), {
+        scope: 'scoped',
+      });
+
+      expect(parent.get(NUMBER)).toBe(2);
+
+      const container = createContainer(parent);
+
+      expect(container.get(NUMBER)).toBe(2);
+      expect(parent.get(NUMBER)).toBe(2);
 
       expect(factory).toBeCalledTimes(2);
 
-      // Check for using the internal FAKE_FACTORY
-      const internalFactories = container.resolve(FACTORIES_MAP);
-      const fakeContext = internalFactories.get(NUMBER.symbol);
-      expect(fakeContext?.factory).toBe(FAKE_FACTORY);
-      expect(() => fakeContext?.factory?.(container)).toThrowError(
-        'FAKE_FACTORY',
-      );
-      const internalOnRemoved =
-        fakeContext?.options?.scope === 'scoped' &&
-        fakeContext?.options?.onRemoved;
-      expect(internalOnRemoved).toBeUndefined();
+      container.removeAll();
+      expect(parent.get(NUMBER)).toBe(2);
     });
 
     it('should inherit a factory with "main" scope', async () => {
@@ -203,7 +219,7 @@ describe('Container', () => {
       container.bindValue(START, 20);
 
       let counter = 0;
-      const factory = jest.fn((start) => start + ++counter);
+      const factory = vi.fn((start) => start + ++counter);
       parent.bindFactory(NUMBER, injectable(factory, START));
 
       expect(container.get(NUMBER)).toBe(11);
@@ -219,6 +235,9 @@ describe('Container', () => {
       const container1 = createContainer(parent);
       const container2 = createContainer(parent);
       const container3 = createContainer(parent);
+      const childContainer1 = createContainer(container1);
+      const childContainer2 = createContainer(container2);
+      const childContainer3 = createContainer(container3);
 
       const START = token<number>();
       parent.bindValue(START, 0);
@@ -227,18 +246,38 @@ describe('Container', () => {
       container3.bindValue(START, 30);
 
       let counter = 0;
-      const factory = jest.fn((start) => start + ++counter);
+      const factory = vi.fn((start) => start + ++counter);
       parent.bindFactory(NUMBER, injectable(factory, START), {
         scope: 'scoped',
       });
 
-      expect(container1.get(NUMBER)).toBe(11);
+      container1.bindFactory(NUMBER, injectable(factory, START), {
+        scope: 'scoped',
+      });
+
+      container2.bindFactory(NUMBER, injectable(factory, START), {
+        scope: 'scoped',
+      });
+
+      container3.bindFactory(NUMBER, injectable(factory, START), {
+        scope: 'scoped',
+      });
+
+      childContainer1.bindValue(START, 1);
+      childContainer2.bindValue(START, 2);
+      childContainer3.bindValue(START, 3);
+
       expect(container1.get(NUMBER)).toBe(11);
       expect(container2.get(NUMBER)).toBe(22);
-      expect(parent.get(NUMBER)).toBe(3);
+      expect(container3.get(NUMBER)).toBe(33);
+      expect(parent.get(NUMBER)).toBe(4);
       expect(container1.get(NUMBER)).toBe(11);
       expect(container2.get(NUMBER)).toBe(22);
-      expect(container3.get(NUMBER)).toBe(34);
+      expect(container3.get(NUMBER)).toBe(33);
+
+      expect(childContainer1.get(NUMBER)).toBe(11);
+      expect(childContainer2.get(NUMBER)).toBe(22);
+      expect(childContainer3.get(NUMBER)).toBe(33);
 
       expect(factory).toBeCalledTimes(4);
     });
@@ -252,7 +291,7 @@ describe('Container', () => {
       container.bindValue(START, 20);
 
       let counter = 0;
-      const factory = jest.fn((start) => start + ++counter);
+      const factory = vi.fn((start) => start + ++counter);
       parent.bindFactory(NUMBER, injectable(factory, START), {
         scope: 'transient',
       });
@@ -268,9 +307,9 @@ describe('Container', () => {
     it('should bind a factory with "onRemoved" callback', () => {
       const container = createContainer();
 
-      const factory = jest.fn(() => 1);
-      const callback = jest.fn();
-      container.bindFactory(NUMBER, factory, {onRemoved: callback});
+      const factory = vi.fn(() => 1);
+      const callback = vi.fn();
+      container.bindFactory(NUMBER, factory, { onRemoved: callback });
 
       expect(container.get(NUMBER)).toBe(1);
       container.remove(NUMBER);
@@ -282,12 +321,11 @@ describe('Container', () => {
       const parent = createContainer();
       const container = createContainer(parent);
 
-      const factory = () => createContainer();
-      container.bindFactory(CONTAINER, factory);
-      container.bindFactory(PARENT_CONTAINER, factory);
+      container.bindFactory(CONTAINER, () => createContainer());
+      container.bindFactory(PARENT_CONTAINERS, () => [createContainer()]);
 
       expect(container.get(CONTAINER)).toBe(container);
-      expect(container.get(PARENT_CONTAINER)).toBe(parent);
+      expect(container.get(PARENT_CONTAINERS)).toEqual([parent]);
     });
   });
 
@@ -302,9 +340,9 @@ describe('Container', () => {
     it('should remove "singleton" factory silently in case its value has never been resolved', () => {
       const container = createContainer();
 
-      const factory = jest.fn(() => 1);
-      const onRemoved = jest.fn();
-      container.bindFactory(NUMBER, factory, {scope: 'singleton', onRemoved});
+      const factory = vi.fn(() => 1);
+      const onRemoved = vi.fn();
+      container.bindFactory(NUMBER, factory, { scope: 'singleton', onRemoved });
       container.remove(NUMBER);
 
       expect(container.get(NUMBER)).toBeUndefined();
@@ -315,9 +353,9 @@ describe('Container', () => {
     it('should remove "singleton" factory with calling "onRemoved" in case its value has been resolved', () => {
       const container = createContainer();
 
-      const factory = jest.fn(() => 100);
-      const onRemoved = jest.fn();
-      container.bindFactory(NUMBER, factory, {scope: 'singleton', onRemoved});
+      const factory = vi.fn(() => 100);
+      const onRemoved = vi.fn();
+      container.bindFactory(NUMBER, factory, { scope: 'singleton', onRemoved });
 
       expect(container.get(NUMBER)).toBe(100);
       container.remove(NUMBER);
@@ -362,37 +400,25 @@ describe('Container', () => {
       const container = createContainer(parent);
 
       let count = 1;
-      const factory = jest.fn(() => count++);
-      const onRemoved = jest.fn();
-      parent.bindFactory(NUMBER, factory, {scope: 'scoped', onRemoved});
+      const factory = vi.fn(() => count++);
+      const onRemoved = vi.fn();
+      parent.bindFactory(NUMBER, factory, { scope: 'scoped', onRemoved });
 
       expect(parent.get(NUMBER)).toBe(1);
-      expect(container.get(NUMBER)).toBe(2);
-
-      // Check for using the internal FAKE_FACTORY
-      const internalFactories = container.resolve(FACTORIES_MAP);
-      const fakeContext = internalFactories.get(NUMBER.symbol);
-      expect(fakeContext?.factory).toBe(FAKE_FACTORY);
-      expect(() => fakeContext?.factory?.(container)).toThrowError(
-        'FAKE_FACTORY',
-      );
-      const internalOnRemoved =
-        fakeContext?.options?.scope === 'scoped' &&
-        fakeContext?.options?.onRemoved;
-      expect(internalOnRemoved).toBe(onRemoved);
+      expect(container.get(NUMBER)).toBe(1);
 
       // Continue the main test
       parent.remove(NUMBER);
       container.remove(NUMBER);
       expect(onRemoved).toHaveBeenNthCalledWith(1, 1);
-      expect(onRemoved).toHaveBeenNthCalledWith(2, 2);
+      expect(onRemoved).toHaveBeenCalledTimes(1);
     });
 
     it('should remove "transient" factory in case its value has never been resolved', () => {
       const container = createContainer();
 
-      const factory = jest.fn(() => 1);
-      container.bindFactory(NUMBER, factory, {scope: 'transient'});
+      const factory = vi.fn(() => 1);
+      container.bindFactory(NUMBER, factory, { scope: 'transient' });
       container.remove(NUMBER);
 
       expect(container.get(NUMBER)).toBeUndefined();
@@ -402,8 +428,8 @@ describe('Container', () => {
     it('should remove "transient" factory in case its value has been resolved', () => {
       const container = createContainer();
 
-      const factory = jest.fn(() => 1);
-      container.bindFactory(NUMBER, factory, {scope: 'transient'});
+      const factory = vi.fn(() => 1);
+      container.bindFactory(NUMBER, factory, { scope: 'transient' });
       expect(container.get(NUMBER)).toBe(1);
 
       container.remove(NUMBER);
@@ -416,10 +442,10 @@ describe('Container', () => {
       const container = createContainer(parent);
 
       container.remove(CONTAINER);
-      container.remove(PARENT_CONTAINER);
+      container.remove(PARENT_CONTAINERS);
 
       expect(container.get(CONTAINER)).toBe(container);
-      expect(container.get(PARENT_CONTAINER)).toBe(parent);
+      expect(container.get(PARENT_CONTAINERS)).toEqual([parent]);
     });
   });
 
@@ -441,8 +467,8 @@ describe('Container', () => {
       const F1 = token('f1');
       const F2 = token('f2');
 
-      const unbind1 = jest.fn();
-      const unbind2 = jest.fn();
+      const unbind1 = vi.fn();
+      const unbind2 = vi.fn();
 
       const container = createContainer();
       container.bindFactory(F1, () => 10, {
@@ -472,13 +498,13 @@ describe('Container', () => {
       container.removeAll();
 
       expect(container.get(CONTAINER)).toBe(container);
-      expect(container.get(PARENT_CONTAINER)).toBe(parent);
+      expect(container.get(PARENT_CONTAINERS)).toEqual([parent]);
     });
   });
 
   describe('hasToken()', () => {
     it('should check if a container hierarchy has the token', () => {
-      const factory = jest.fn();
+      const factory = vi.fn();
 
       const token1 = token();
       const token2 = token();
@@ -560,13 +586,13 @@ describe('Container', () => {
     it('should return the parent container for PARENT_CONTAINER token', () => {
       const parent = createContainer();
       const container = createContainer(parent);
-      const result = container.get(PARENT_CONTAINER);
-      expect(result).toBe(parent);
+      const result = container.get(PARENT_CONTAINERS);
+      expect(result).toEqual([parent]);
     });
 
     it('should return "undefined" for PARENT_CONTAINER token in case there is no parent container', () => {
       const container = createContainer();
-      const result = container.get(PARENT_CONTAINER);
+      const result = container.get(PARENT_CONTAINERS);
       expect(result).toBeUndefined();
     });
 
@@ -655,15 +681,15 @@ describe('Container', () => {
     it('should resolve PARENT_CONTAINER as the parent container', () => {
       const parent = createContainer();
       const container = createContainer(parent);
-      const result = container.get(PARENT_CONTAINER);
-      expect(result).toBe(parent);
+      const result = container.get(PARENT_CONTAINERS);
+      expect(result).toEqual([parent]);
     });
 
     it('should throw ResolverError for PARENT_CONTAINER token in case there is no parent container', () => {
       const container = createContainer();
-      expect(() => container.resolve(PARENT_CONTAINER)).toThrowError(
+      expect(() => container.resolve(PARENT_CONTAINERS)).toThrowError(
         new ResolverError(
-          `Token "${PARENT_CONTAINER.symbol.description}" is not provided`,
+          `Token "${PARENT_CONTAINERS.symbol.description}" is not provided`,
         ),
       );
     });
@@ -680,8 +706,8 @@ describe('Container', () => {
 
     it('should resolve a value by shared tokens', () => {
       const key = 'token-' + Date.now();
-      const t1 = token({key});
-      const t2 = token({key});
+      const t1 = token({ key });
+      const t2 = token({ key });
       expect(t1).not.toBe(t2);
 
       const container = createContainer();
@@ -689,6 +715,77 @@ describe('Container', () => {
 
       expect(container.resolve(t1)).toBe(1);
       expect(container.resolve(t2)).toBe(1);
+    });
+  });
+
+  describe('multiple parent containers', () => {
+    it('should expose all parent containers in order via PARENT_CONTAINERS', () => {
+      const p1 = createContainer();
+      const p2 = createContainer();
+      const child = createContainer([p1, p2]);
+
+      expect(child.get(PARENT_CONTAINERS)).toEqual([p1, p2]);
+    });
+
+    it('get(): should return a value from the first parent that provides it', () => {
+      const p1 = createContainer();
+      const p2 = createContainer();
+      p1.bindValue(NUMBER, 1);
+      p2.bindValue(NUMBER, 2);
+
+      const child = createContainer([p1, p2]);
+      expect(child.get(NUMBER)).toBe(1);
+    });
+
+    it('get(): should return a value from the next parent when previous parents do not provide it', () => {
+      const p1 = createContainer();
+      const p2 = createContainer();
+      p2.bindValue(NUMBER, 2);
+
+      const child = createContainer([p1, p2]);
+      expect(child.get(NUMBER)).toBe(2);
+    });
+
+    it('resolve(): should resolve a value from the first parent that provides it', () => {
+      const p1 = createContainer();
+      const p2 = createContainer();
+      p1.bindValue(NUMBER, 1);
+      p2.bindValue(NUMBER, 2);
+
+      const child = createContainer([p1, p2]);
+      expect(child.resolve(NUMBER)).toBe(1);
+    });
+
+    it('resolve(): should resolve a value from the next parent when previous parents do not provide it', () => {
+      const p1 = createContainer();
+      const p2 = createContainer();
+      p2.bindValue(NUMBER, 2);
+
+      const child = createContainer([p1, p2]);
+      expect(child.resolve(NUMBER)).toBe(2);
+    });
+
+    it('resolve(): should throw if none of the parents provide the value', () => {
+      const p1 = createContainer();
+      const p2 = createContainer();
+      const child = createContainer([p1, p2]);
+
+      expect(() => child.resolve(NUMBER)).toThrow(ResolverError);
+    });
+
+    it('should NOT resolve a token from a parent that does NOT provide a RESOLVER token', () => {
+      const T1 = token<number>('T1');
+
+      const customParent = {
+        hasToken: () => true,
+        get: (t: any) => (t === RESOLVER ? undefined : undefined),
+        resolve: () => {
+          throw new Error('Not implemented');
+        },
+      };
+
+      const container = createContainer(customParent);
+      expect(container.get(T1)).toBeUndefined();
     });
   });
 });
